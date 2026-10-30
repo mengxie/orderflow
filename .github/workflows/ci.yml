@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Check formatting
+        run: dotnet format whitespace --folder --verify-no-changes
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (analyzer and style warnings are errors)
+        run: dotnet build --no-restore --configuration Release
+
+      # Integration tests start real PostgreSQL and RabbitMQ containers with Testcontainers;
+      # GitHub's Ubuntu runners have Docker available.
+      - name: Test (unit, architecture and integration)
+        run: >
+          dotnet test --no-build --configuration Release
+          --logger trx --results-directory TestResults
+          --collect:"XPlat Code Coverage"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults/
+          retention-days: 14
+
+  container:
+    name: Container image
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build --tag orderflow-api:${{ github.sha }} .

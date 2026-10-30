@@ -1,0 +1,47 @@
+# Try the API from Visual Studio, Rider or VS Code (REST Client). Start the stack first:
+#   docker compose up --build
+@baseUrl = http://localhost:8080
+
+### Place an order. Send it twice: the second response is 200 with the same order, not a duplicate.
+# @name placeOrder
+POST {{baseUrl}}/orders
+Content-Type: application/json
+Idempotency-Key: demo-order-001
+
+{
+  "customerId": "0193a5b2-7c41-7d2e-9f10-3c5e8a1b2d4f",
+  "currency": "NZD",
+  "lines": [
+    { "sku": "KEYBOARD", "quantity": 2, "unitPrice": 89.50 },
+    { "sku": "MOUSE", "quantity": 1, "unitPrice": 25.00 }
+  ]
+}
+
+###
+@orderId = {{placeOrder.response.body.$.id}}
+
+### Read it back
+GET {{baseUrl}}/orders/{{orderId}}
+
+### Act as the payments service: publish PaymentCapturedV1 to RabbitMQ (Development only).
+# The order becomes Paid asynchronously, through the consumer and the idempotent inbox.
+POST {{baseUrl}}/dev/payments
+Content-Type: application/json
+
+{ "orderId": "{{orderId}}", "amount": 204.00, "currency": "NZD", "paymentId": "pay_demo_001" }
+
+### Ship it (only valid once paid)
+POST {{baseUrl}}/orders/{{orderId}}/ship
+Content-Type: application/json
+
+{ "trackingNumber": "NZ000123456" }
+
+### Validation failure: an RFC 9457 problem with a machine-readable "code"
+POST {{baseUrl}}/orders
+Content-Type: application/json
+Idempotency-Key: demo-invalid-001
+
+{ "customerId": "0193a5b2-7c41-7d2e-9f10-3c5e8a1b2d4f", "currency": "NZD", "lines": [ { "sku": "not a sku", "quantity": 1, "unitPrice": 1 } ] }
+
+### Readiness: PostgreSQL, RabbitMQ and outbox lag
+GET {{baseUrl}}/health/ready

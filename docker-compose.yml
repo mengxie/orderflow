@@ -1,0 +1,58 @@
+# Full local stack: docker compose up --build
+#   API ................ http://localhost:8080   (OpenAPI document: /openapi/v1.json)
+#   Traces & metrics ... http://localhost:18888  (Aspire dashboard)
+#   RabbitMQ UI ........ http://localhost:15672  (orderflow / orderflow)
+name: orderflow
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: orderflow
+      POSTGRES_PASSWORD: orderflow
+      POSTGRES_DB: orderflow
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderflow -d orderflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      # The built-in guest user only accepts connections from localhost, so use a dedicated one.
+      RABBITMQ_DEFAULT_USER: orderflow
+      RABBITMQ_DEFAULT_PASS: orderflow
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    environment:
+      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "18888:18888"
+
+  api:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: Host=postgres;Database=orderflow;Username=orderflow;Password=orderflow
+      RabbitMq__ConnectionString: amqp://orderflow:orderflow@rabbitmq:5672
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18889
+    ports:
+      - "8080:8080"
