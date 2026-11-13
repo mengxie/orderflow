@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build: restore in its own layer so it stays cached until a project file changes.
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
 COPY src/OrderFlow.Domain/OrderFlow.Domain.csproj src/OrderFlow.Domain/
